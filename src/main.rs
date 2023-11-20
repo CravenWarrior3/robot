@@ -6,12 +6,11 @@ use futures::stream::StreamExt;
 use futures::task::LocalSpawnExt;
 use r2r::QosProfile;
 use r2r::geometry_msgs::msg::{Point, Pose, Quaternion, Twist, Vector3};
-use r2r::qos::ReliabilityPolicy;
 use r2r::sensor_msgs::msg::{Range, LaserScan};
 use r2r::std_msgs::msg::Int32 as RosI32;
 use r2r::std_msgs::msg::String as RosString;
 use r2r::unitysim_msgs::msg::BoundingBox3d;
-use crate::sensors::RangeData;
+use crate::sensors::{ImuData, RangeData};
 
 mod sensors;
 
@@ -129,6 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pool = LocalPool::new();
     let spawner = pool.spawner();
     let rangefinder = RangeData::new(&spawner, &mut node, "/range");
+    let imu = ImuData::new(&spawner, &mut node, "/imu_broadcaster/imu");
 
     // Laser scanner drives mobility
     {
@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Repeated actions and movement mode reset
                 if repeat > 0 {
                     repeat -= 1;
-                    velocity.publish(&velocity_cache).unwrap();
+                    //velocity.publish(&velocity_cache).unwrap();
                     return future::ready(());
                 } else if cooldown == 0 {
                     cooldown = 60;
@@ -197,20 +197,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let left_hemi = ArcStats::from_degrees(-170.0, 0.0, &scan);
                 let right_hemi = ArcStats::from_degrees(0.0, 170.0, &scan);
 
-                let left = ArcStats::from_index(165, 180, &scan);
-                let front_left = ArcStats::from_index(95, 105, &scan);
-                let front = ArcStats::from_index(75, 105, &scan);
-                let front_right = ArcStats::from_index(75, 85, &scan);
-                let right = ArcStats::from_index(0, 15, &scan);
-                let left_hemi = ArcStats::from_index(90, 180, &scan);
-                let right_hemi = ArcStats::from_index(0, 90, &scan);
-
                 // Choose turn direction and speed
                 msg.angular.z = match movement_mode {
                     MoveMode::FollowLeft => ((left_hemi.min - 0.5) * 0.75) as f64,
                     MoveMode::FollowRight => ((0.5 - right_hemi.min) * 0.75) as f64,
                     MoveMode::Wander => {
                         // Switch movement mode
+                        // TODO: Implement better wall follow
                         /*if cooldown > 40 && cooldown < 50 && (left.average - right.average).abs() > 1.0 {
                             if left.average < 4.0 {
                                 movement_mode = MoveMode::FollowLeft;
@@ -223,6 +216,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     _ => msg.angular.z,
                 };
+
+                let mut imu = imu.lock().unwrap();
+                println!("Z: {}", imu.yaw);
 
                 // Our laser scanner doesn't work up close, check the rangefinders too
                 let mut rangefinder = rangefinder.lock().unwrap();
@@ -240,6 +236,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // Avoid hitting walls
                 if front_min < 0.25 {
+                    // TODO: Try using the IMU data for rotations
                     println!("STUCK\n");
                     msg.angular.z = MAX_TURN;
                     repeat = 3;
@@ -254,7 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 cooldown -= 1;
 
-                velocity.publish(&msg).unwrap();
+                //velocity.publish(&msg).unwrap();
                 future::ready(())
             }).await
         })?;

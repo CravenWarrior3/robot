@@ -84,6 +84,7 @@ impl ImuData {
         spawner.spawn_local(async move {
             subscriber.for_each(|msg| {
                 let mut lock = data.lock().unwrap();
+                // I don't understand quaternions, this will become an issue later
                 lock.yaw = msg.orientation.z;
                 future::ready(())
             }).await
