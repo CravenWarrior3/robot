@@ -6,7 +6,8 @@ use futures::stream::StreamExt;
 use futures::task::LocalSpawnExt;
 use r2r::QosProfile;
 use r2r::geometry_msgs::msg::{Point, Pose, Quaternion, Twist, Vector3};
-use r2r::sensor_msgs::msg::LaserScan;
+use r2r::qos::ReliabilityPolicy;
+use r2r::sensor_msgs::msg::{Range, LaserScan};
 use r2r::std_msgs::msg::Int32 as RosI32;
 use r2r::std_msgs::msg::String as RosString;
 use r2r::unitysim_msgs::msg::BoundingBox3d;
@@ -196,13 +197,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let left_hemi = ArcStats::from_degrees(-170.0, 0.0, &scan);
                 let right_hemi = ArcStats::from_degrees(0.0, 170.0, &scan);
 
-                /*let left = ArcStats::from_index(165, 180, &scan);
+                let left = ArcStats::from_index(165, 180, &scan);
                 let front_left = ArcStats::from_index(95, 105, &scan);
                 let front = ArcStats::from_index(75, 105, &scan);
                 let front_right = ArcStats::from_index(75, 85, &scan);
                 let right = ArcStats::from_index(0, 15, &scan);
                 let left_hemi = ArcStats::from_index(90, 180, &scan);
-                let right_hemi = ArcStats::from_index(0, 90, &scan);*/
+                let right_hemi = ArcStats::from_index(0, 90, &scan);
 
                 // Choose turn direction and speed
                 msg.angular.z = match movement_mode {
