@@ -214,10 +214,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let rangefinder = rangefinder.lock().unwrap();
                 let front_min = front.min.min(rangefinder.ranges[0].min(rangefinder.ranges[1]));
 
-                // Forward speed reduction
-                if front_min < 1.5 {
-                    msg.linear.x = front.min as f64 / 3.0;
+                // Speed control
+                if imu_angles.1.abs() > 0.3 {
+                    // Stuck on wall, reverse
+                    msg.linear.x = -1.0;
+                } else if front_min < 1.0 {
+                    // Approaching wall, slow down
+                    msg.linear.x = front.min as f64 / 4.0;
                 }
+
                 // Turn speed cap
                 if msg.angular.z > MAX_TURN {
                     msg.angular.z = MAX_TURN;
@@ -225,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     msg.angular.z = -MAX_TURN;
                 }
                 // Avoid hitting walls
-                if front_min < 0.25 && decision_lockout < 0 {
+                if front_min < 0.3 && decision_lockout < 0 {
                     // TODO: Try using the IMU data for rotations
                     println!("STUCK\n");
                     target_angle = imu_angles.2 + if imu_angles.2 >= 0.0 {
