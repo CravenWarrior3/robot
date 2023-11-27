@@ -132,34 +132,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Laser scanner drives mobility
     {
-        let mut velocity_cache = Twist {
-            linear: Vector3 {
-                x: 1.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            angular: Vector3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        };
-
         let mut movement_mode = MoveMode::Wander;
-        let (mut cooldown, mut repeat) = (0, 0);
+        let (mut cooldown, mut reset, mut decision_lockout) = (0, 0, 0);
+        let mut target_angle = 0.0;
+        let mut follow_angle = false;
 
         spawner.spawn_local(async move {
             laser.for_each(|scan| {
-                // Repeated actions and movement mode reset
-                if repeat > 0 {
-                    repeat -= 1;
-                    velocity.publish(&velocity_cache).unwrap();
-                    return future::ready(());
-                } else if cooldown == 0 {
+                // Movement mode reset
+                if cooldown == 0 {
                     cooldown = 60;
                     movement_mode = MoveMode::Wander;
                     println!("MOVEMENT RESET\n");
                 }
+                // Maneuver time reset
+                /*if reset == 0 {
+                    follow_angle = false;
+                    println!("MANEUVER RESET\n");
+                }*/
 
                 let mut msg = Twist {
                     linear: Vector3 {
@@ -226,7 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Forward speed reduction
                 if front_min < 1.5 {
-                    msg.linear.x = front.min as f64 / 5.0;
+                    msg.linear.x = front.min as f64 / 3.0;
                 }
                 // Turn speed cap
                 if msg.angular.z > MAX_TURN {
@@ -235,12 +225,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     msg.angular.z = -MAX_TURN;
                 }
                 // Avoid hitting walls
-                if front_min < 0.25 {
+                if front_min < 0.25 && decision_lockout < 0 {
                     // TODO: Try using the IMU data for rotations
                     println!("STUCK\n");
-                    msg.angular.z = MAX_TURN;
-                    repeat = 3;
-                    velocity_cache = msg.clone();
+                    target_angle = imu_angles.2 + if imu_angles.2 >= 0.0 {
+                        -PI
+                    } else {
+                        PI
+                    };
+                    follow_angle = true;
+                    decision_lockout = 40;
+                    reset = 10;
                 } else if front_min < 0.5 {
                     msg.angular.z += if rangefinder.ranges[0] < rangefinder.ranges[1] {
                         -MAX_TURN
@@ -249,7 +244,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
+                // TODO: Add a PID
+                if follow_angle {
+                    let mut turn_angle = (target_angle - imu_angles.2).sin().atan2((target_angle - imu_angles.2).cos());
+                    msg.angular.z = if turn_angle.abs() > 1.0 {
+                        turn_angle * 2.0
+                    } else {
+                        turn_angle
+                    };
+
+                    //println!("{} {} {}", imu_angles.2, target_angle, turn_angle);
+                    if turn_angle.abs() < 0.2 {
+                        follow_angle = false;
+                        println!("MANEUVER END\n");
+                    }
+                }
+
                 cooldown -= 1;
+                reset -= 1;
+                decision_lockout -= 1;
 
                 velocity.publish(&msg).unwrap();
                 future::ready(())
