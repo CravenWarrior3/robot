@@ -37,7 +37,7 @@ impl ArcStats {
             average: 0.0,
         };
 
-        let mut count = end - start;
+        let count = end - start;
         for i in start..end {
             let mut range = laser.ranges[i];
 
@@ -72,7 +72,7 @@ impl ArcStats {
             average: 0.0,
         };
 
-        let mut count = end - start;
+        let count = end - start;
         for i in start..end {
             let mut range = laser.ranges[i];
 
@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Repeated actions and movement mode reset
                 if repeat > 0 {
                     repeat -= 1;
-                    //velocity.publish(&velocity_cache).unwrap();
+                    velocity.publish(&velocity_cache).unwrap();
                     return future::ready(());
                 } else if cooldown == 0 {
                     cooldown = 60;
@@ -214,14 +214,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }*/
                         ((right_hemi.average - left_hemi.average) * 0.3) as f64
                     }
-                    _ => msg.angular.z,
                 };
 
-                let mut imu = imu.lock().unwrap();
-                println!("Z: {}", imu.yaw);
+                let imu = imu.lock().unwrap();
+                let imu_angles = imu.quaternion.euler_angles();
+                //println!("X: {}, Y: {}, Z: {}", imu_angles.0, imu_angles.1, imu_angles.2);
 
                 // Our laser scanner doesn't work up close, check the rangefinders too
-                let mut rangefinder = rangefinder.lock().unwrap();
+                let rangefinder = rangefinder.lock().unwrap();
                 let front_min = front.min.min(rangefinder.ranges[0].min(rangefinder.ranges[1]));
 
                 // Forward speed reduction
@@ -251,7 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 cooldown -= 1;
 
-                //velocity.publish(&msg).unwrap();
+                velocity.publish(&msg).unwrap();
                 future::ready(())
             }).await
         })?;

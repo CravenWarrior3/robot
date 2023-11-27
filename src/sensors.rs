@@ -4,7 +4,8 @@ use futures::executor::LocalSpawner;
 use futures::future;
 use futures::StreamExt;
 use futures::task::LocalSpawnExt;
-use r2r::geometry_msgs::msg::{Point, Pose, Quaternion, Twist, Vector3};
+use nalgebra::{Quaternion, UnitQuaternion};
+use r2r::geometry_msgs::msg::{Point, Pose, Twist, Vector3};
 use r2r::qos::ReliabilityPolicy;
 use r2r::QosProfile;
 use r2r::sensor_msgs::msg::{Imu, LaserScan, Range};
@@ -23,7 +24,8 @@ pub struct RangeData {
 }
 
 pub struct ImuData {
-    pub yaw: f64,
+    // Roll, Pitch, Yaw from -PI to PI
+    pub quaternion: UnitQuaternion<f64>,
 }
 
 impl TrackerData {
@@ -76,7 +78,7 @@ impl RangeData {
 impl ImuData {
     pub fn new(spawner: &LocalSpawner, node: &mut r2r::Node, topic: &str) -> Arc<Mutex<Self>> {
         let data = Arc::new(Mutex::new(Self {
-            yaw: 0.0,
+            quaternion: UnitQuaternion::default(),
         }));
 
         let subscriber = node.subscribe::<Imu>(topic, QosProfile::default()).unwrap();
@@ -84,8 +86,7 @@ impl ImuData {
         spawner.spawn_local(async move {
             subscriber.for_each(|msg| {
                 let mut lock = data.lock().unwrap();
-                // I don't understand quaternions, this will become an issue later
-                lock.yaw = msg.orientation.z;
+                lock.quaternion = UnitQuaternion::from_quaternion(Quaternion::new(msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z));
                 future::ready(())
             }).await
         }).unwrap();
