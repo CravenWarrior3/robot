@@ -9,7 +9,6 @@ use r2r::geometry_msgs::msg::{Point, Pose, Quaternion, Twist, Vector3};
 use r2r::sensor_msgs::msg::{Range, LaserScan};
 use r2r::std_msgs::msg::Int32 as RosI32;
 use r2r::std_msgs::msg::String as RosString;
-use r2r::unitysim_msgs::msg::BoundingBox3d;
 use crate::sensors::{ImuData, RangeData};
 
 mod sensors;
@@ -264,6 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("MANEUVER END\n");
                     }
                 }
+                //println!("{} {} {}", imu.rotation.x, imu.rotation.y, imu.rotation.z);
 
                 cooldown -= 1;
                 reset -= 1;
