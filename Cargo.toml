@@ -14,4 +14,5 @@ opt-level = 3
 [dependencies]
 futures = "0.3"
 nalgebra = "0.32"
+pid = "4.0"
 r2r = "0.7"

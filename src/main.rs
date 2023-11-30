@@ -4,6 +4,7 @@ use futures::executor::LocalPool;
 use futures::future;
 use futures::stream::StreamExt;
 use futures::task::LocalSpawnExt;
+use pid::Pid;
 use r2r::QosProfile;
 use r2r::geometry_msgs::msg::{Point, Pose, Quaternion, Twist, Vector3};
 use r2r::sensor_msgs::msg::{Range, LaserScan};
@@ -132,9 +133,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Laser scanner drives mobility
     {
         let mut movement_mode = MoveMode::Wander;
-        let (mut cooldown, mut reset, mut decision_lockout) = (0, 0, 0);
+        let (mut cooldown, mut decision_lockout) = (0, 0);
         let mut target_angle = 0.0;
         let mut follow_angle = false;
+        let mut pid = Pid::new(0.0, MAX_TURN);
+        pid.p(2.0, MAX_TURN).i(1.0, MAX_TURN).d(0.5, MAX_TURN);
 
         spawner.spawn_local(async move {
             laser.for_each(|scan| {
@@ -144,11 +147,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     movement_mode = MoveMode::Wander;
                     println!("MOVEMENT RESET\n");
                 }
-                // Maneuver time reset
-                /*if reset == 0 {
-                    follow_angle = false;
-                    println!("MANEUVER RESET\n");
-                }*/
 
                 let mut msg = Twist {
                     linear: Vector3 {
@@ -230,8 +228,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // Avoid hitting walls
                 if front_min < 0.3 && decision_lockout < 0 {
-                    // TODO: Try using the IMU data for rotations
-                    println!("STUCK\n");
+                    println!("U-TURN\n");
                     target_angle = imu_angles.2 + if imu_angles.2 >= 0.0 {
                         -PI
                     } else {
@@ -239,7 +236,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     follow_angle = true;
                     decision_lockout = 40;
-                    reset = 10;
                 } else if front_min < 0.5 {
                     msg.angular.z += if rangefinder.ranges[0] < rangefinder.ranges[1] {
                         -MAX_TURN
@@ -248,17 +244,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                // TODO: Add a PID
                 if follow_angle {
                     let mut turn_angle = (target_angle - imu_angles.2).sin().atan2((target_angle - imu_angles.2).cos());
-                    msg.angular.z = if turn_angle.abs() > 1.0 {
-                        turn_angle * 2.0
-                    } else {
-                        turn_angle
-                    };
+                    let output = pid.next_control_output(turn_angle);
 
+                    msg.angular.z = output.output;
                     //println!("{} {} {}", imu_angles.2, target_angle, turn_angle);
-                    if turn_angle.abs() < 0.2 {
+                    if turn_angle.abs() < 0.05 {
                         follow_angle = false;
                         println!("MANEUVER END\n");
                     }
@@ -266,7 +258,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 //println!("{} {} {}", imu.rotation.x, imu.rotation.y, imu.rotation.z);
 
                 cooldown -= 1;
-                reset -= 1;
                 decision_lockout -= 1;
 
                 velocity.publish(&msg).unwrap();
@@ -276,7 +267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     loop {
-        node.spin_once(std::time::Duration::from_millis(100));
+        node.spin_once(std::time::Duration::from_millis(10));
         pool.run_until_stalled();
     }
 }
