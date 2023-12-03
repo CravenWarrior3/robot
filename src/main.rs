@@ -137,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut target_angle = 0.0;
         let mut follow_angle = false;
         let mut pid = Pid::new(0.0, MAX_TURN);
-        pid.p(2.0, MAX_TURN).i(1.0, MAX_TURN).d(0.5, MAX_TURN);
+        pid.p(0.2, MAX_TURN).i(0.2, MAX_TURN).d(0.4, MAX_TURN);
 
         spawner.spawn_local(async move {
             laser.for_each(|scan| {
@@ -205,16 +205,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let imu = imu.lock().unwrap();
                 let imu_angles = imu.quaternion.euler_angles();
-                //println!("X: {}, Y: {}, Z: {}", imu_angles.0, imu_angles.1, imu_angles.2);
 
                 // Our laser scanner doesn't work up close, check the rangefinders too
                 let rangefinder = rangefinder.lock().unwrap();
                 let front_min = front.min.min(rangefinder.ranges[0].min(rangefinder.ranges[1]));
 
                 // Speed control
-                if imu_angles.1.abs() > 0.3 {
+                if imu_angles.1.abs() > 0.15 {
                     // Stuck on wall, reverse
-                    msg.linear.x = -1.0;
+                    msg.linear.x = -0.25;
                 } else if front_min < 1.0 {
                     // Approaching wall, slow down
                     msg.linear.x = front.min as f64 / 4.0;
@@ -227,16 +226,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     msg.angular.z = -MAX_TURN;
                 }
                 // Avoid hitting walls
-                if front_min < 0.3 && decision_lockout < 0 {
+                if front_min < 0.4 && decision_lockout < 0 {
                     println!("U-TURN\n");
                     target_angle = imu_angles.2 + if imu_angles.2 >= 0.0 {
                         -PI
                     } else {
                         PI
                     };
+                    pid.reset_integral_term();
                     follow_angle = true;
-                    decision_lockout = 40;
-                } else if front_min < 0.5 {
+                    decision_lockout = 120;
+                } else if front_min < 0.75 {
                     msg.angular.z += if rangefinder.ranges[0] < rangefinder.ranges[1] {
                         -MAX_TURN
                     } else {
@@ -248,14 +248,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut turn_angle = (target_angle - imu_angles.2).sin().atan2((target_angle - imu_angles.2).cos());
                     let output = pid.next_control_output(turn_angle);
 
+                    msg.linear.x = 0.0;
                     msg.angular.z = output.output;
-                    //println!("{} {} {}", imu_angles.2, target_angle, turn_angle);
-                    if turn_angle.abs() < 0.05 {
+                    if turn_angle.abs() < 0.3 {
                         follow_angle = false;
+                        msg.angular.z = 0.0;
                         println!("MANEUVER END\n");
                     }
                 }
-                //println!("{} {} {}", imu.rotation.x, imu.rotation.y, imu.rotation.z);
 
                 cooldown -= 1;
                 decision_lockout -= 1;
