@@ -199,7 +199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 movement_mode = MoveMode::FollowRight;
                             }
                         }*/
-                        ((right_hemi.average - left_hemi.average) * 0.3) as f64
+                        ((right_hemi.average - left_hemi.average) * 0.1) as f64
                     }
                 };
 
@@ -211,7 +211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let front_min = front.min.min(rangefinder.ranges[0].min(rangefinder.ranges[1]));
 
                 // Speed control
-                if imu_angles.1.abs() > 0.15 {
+                if imu_angles.1.abs() > 0.2 {
                     // Stuck on wall, reverse
                     msg.linear.x = -0.25;
                 } else if front_min < 1.0 {
